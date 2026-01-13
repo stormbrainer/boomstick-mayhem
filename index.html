@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BOOMSTICK MAYHEM: CROSS-LINK</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --neon: #0f0; --glow: rgba(0, 255, 0, 0.6); --bg: #050805; --cyan: #0ff; --red: #f00; --gold: #ffb000; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: var(--neon); touch-action: none; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; object-fit: contain; }
+        
+        /* Scanline Effect */
+        body::after { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 118, 0.03)); z-index: 999; background-size: 100% 3px, 3px 100%; pointer-events: none; }
+
+        /* AUTH & HUB */
+        #boot { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        .auth-box { width: 90%; max-width: 400px; border: 2px solid var(--neon); padding: 20px; background: rgba(0,15,0,0.95); box-shadow: 0 0 25px var(--glow); text-align: center; box-sizing: border-box; }
+        
+        .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .mode-btn { border: 1px solid var(--neon); padding: 10px; cursor: pointer; font-size: 0.8em; transition: 0.3s; }
+        .mode-btn:hover { background: var(--neon); color: #000; }
+        .mode-btn.active { background: var(--cyan); color: #000; border-color: var(--cyan); }
+
+        #sidebar { position: fixed; right: 0; top: 0; bottom: 0; width: 240px; background: rgba(0,10,0,0.9); border-left: 2px solid var(--neon); padding: 15px; z-index: 1100; display: none; overflow-y: auto; }
+        .item { padding: 10px; border-bottom: 1px solid #030; font-size: 0.8em; }
+        .acc-btn { font-size: 0.7em; margin-top: 5px; color: var(--cyan); border-color: var(--cyan); width: auto; padding: 4px 8px; }
+        .rep-btn { font-size: 0.7em; margin-top: 5px; color: var(--red); border-color: var(--red); width: auto; padding: 4px 8px; }
+
+        input { width: 100%; background: #000; border: 1px solid currentColor; color: inherit; padding: 10px; margin: 8px 0; font-family: inherit; box-sizing: border-box; outline: none; }
+        button { background: transparent; color: inherit; border: 1px solid currentColor; padding: 10px; cursor: pointer; width: 100%; text-transform: uppercase; margin-top: 10px; transition: 0.2s; }
+
+        /* HUD */
+        #ui { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid var(--neon); z-index: 100; display: none; font-size: 0.7em; min-width: 120px; }
+        #minimap { position: absolute; top: 10px; right: 10px; width: 80px; height: 80px; border: 2px solid var(--neon); background: rgba(0,10,0,0.8); z-index: 100; display: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--neon); font-size: 24px; pointer-events: none; z-index: 50; display: none; }
+        
+        /* TOUCH CONTROLS */
+        #touch-controls { position: absolute; inset: 0; pointer-events: none; display: none; z-index: 400; }
+        .stick { position: absolute; width: 100px; height: 100px; border: 2px solid var(--glow); border-radius: 50%; background: rgba(0,255,0,0.1); pointer-events: auto; }
+        #move-stick { bottom: 40px; left: 40px; }
+        #look-stick { bottom: 40px; right: 40px; }
+        .action-btn { position: absolute; width: 60px; height: 60px; border: 2px solid var(--neon); border-radius: 50%; background: rgba(0,0,0,0.6); color: var(--neon); font-weight: bold; pointer-events: auto; display: flex; align-items: center; justify-content: center; }
+        #jump-btn { bottom: 160px; right: 40px; }
+        #fire-btn { bottom: 160px; left: 40px; border-color: var(--red); color: var(--red); }
+
+        #chat-area { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 280px; background: rgba(0,0,0,0.8); border-left: 3px solid var(--neon); z-index: 200; display: none; }
+        #chat-log { height: 60px; overflow: hidden; padding: 5px; font-size: 0.7em; }
+        
+        .hp-bar-bg { width: 80px; height: 8px; background: #300; border: 1px solid var(--red); margin-top: 5px; }
+        .hp-bar-fill { height: 100%; background: var(--red); width: 100%; transition: width 0.2s; }
+        #timer-box { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 1.2em; color: var(--gold); z-index: 100; display: none; }
+        #game-msg { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); font-size: 1.5em; text-align: center; text-shadow: 0 0 10px var(--neon); pointer-events: none; display: none; z-index: 500; }
+
+        /* WEAPON */
+        #weapon-view { position: absolute; bottom: 0; right: 10%; width: 300px; height: 200px; pointer-events: none; z-index: 60; display: none; }
+        .gun { position: absolute; bottom: -20px; right: 0; width: 150px; height: 180px; background: #222; border-left: 10px solid #111; border-top: 5px solid #333; transform: skewX(-10deg); }
+        .flash { position: absolute; top: -20px; left: 0; width: 40px; height: 40px; background: yellow; border-radius: 50%; filter: blur(10px); display: none; }
+
+        /* AI MODERATION LOG (HIDDEN) */
+        #mod-console { position: absolute; top: 0; left: 0; width: 250px; height: 150px; background: rgba(255,0,0,0.2); font-size: 9px; color: #ff0000; pointer-events: auto; z-index: 2000; overflow-y: scroll; display: none; border-bottom-right-radius: 10px; border: 1px solid red; }
+    </style>
+</head>
+<body>
+
+    <div id="mod-console">AI_MOD_LOG: READY...</div>
+
+    <div id="boot">
+        <div id="auth-gate" class="auth-box">
+            <h1>[NEURAL_GATE]</h1>
+            <input type="text" id="u-in" placeholder="USERNAME">
+            <input type="password" id="p-in" placeholder="PASSWORD">
+            <button onclick="handleAuth()">SYNC LINK</button>
+        </div>
+
+        <div id="hub" class="auth-box" style="display:none;">
+            <h2>BOOMSTICK_HUB</h2>
+            <div id="stats-summary" style="font-size: 0.8em; color: var(--gold); margin-bottom: 10px;">CREDITS: 0 | ACC: NONE</div>
+            <div class="mode-grid">
+                <div class="mode-btn active" id="m-hang" onclick="setMode('HANGOUT')">HANGOUT</div>
+                <div class="mode-btn" id="m-obby" onclick="setMode('OBBY')">OBBY</div>
+                <div class="mode-btn" id="m-surv" onclick="setMode('SURVIVAL')">SURVIVAL</div>
+            </div>
+            <button onclick="launchGame()" style="background: var(--neon); color: #000;">INITIALIZE</button>
+            <button onclick="claimDaily()" style="color: var(--gold);">DAILY REWARD</button>
+            <hr style="border-color: var(--neon); margin: 15px 0;">
+            <input type="text" id="f-search" placeholder="ADD FRIEND ID">
+            <button onclick="addFriend()" style="color: var(--cyan);">ADD SQUAD</button>
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <strong>SQUAD STATUS</strong>
+        <div id="friend-list"></div>
+        <hr>
+        <strong style="color: var(--cyan);">ACCESSORIES</strong>
+        <div id="acc-list">
+            <div class="item">WINGS <button class="acc-btn" onclick="setAcc('Wings')">EQUIP</button></div>
+            <div class="item">EYE <button class="acc-btn" onclick="setAcc('Eye')">EQUIP</button></div>
+            <div class="item">NONE <button class="acc-btn" onclick="setAcc('None')">UNEQUIP</button></div>
+        </div>
+    </div>
+
+    <div id="ui">
+        [<span id="hud-mode">---</span>] OP: <span id="hud-name">---</span><br>
+        $: <span id="hud-coins">0</span>
+        <div class="hp-bar-bg"><div id="hud-hp" class="hp-bar-fill"></div></div>
+    </div>
+    
+    <div id="timer-box">02:00</div>
+    <div id="game-msg"></div>
+    <canvas id="minimap"></canvas>
+    <div id="crosshair">+</div>
+
+    <div id="weapon-view">
+        <div class="gun" id="gun-sprite">
+            <div class="flash" id="muzzle-flash"></div>
+        </div>
+    </div>
+
+    <div id="touch-controls">
+        <div id="move-stick" class="stick"></div>
+        <div id="look-stick" class="stick"></div>
+        <div id="jump-btn" class="action-btn">JMP</div>
+        <div id="fire-btn" class="action-btn">FIRE</div>
+    </div>
+
+    <div id="chat-area">
+        <div id="chat-log"></div>
+        <input type="text" id="chat-input" placeholder="ENTER TO TALK...">
+    </div>
+
+    <canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const mCanvas = document.getElementById('minimap');
+const mCtx = mCanvas.getContext('2d');
+
+canvas.width = 640; canvas.height = 360;
+mCanvas.width = 120; mCanvas.height = 120;
+
+// --- MOBILE DETECTION ---
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+if(isMobile) document.getElementById('touch-controls').style.display = 'block';
+
+// --- STATE ---
+let currentUser = null, boomcoins = 0, myFriends = [], myAcc = "None";
+let peer = null, connections = [], ghosts = {};
+let gameRunning = false, isChatting = false, selectedMode = 'HANGOUT';
+let shootTimer = 0, roundTime = 120;
+const keys = {};
+
+// --- AI MODERATION STATE ---
+let isShadowBanned = false;
+let violationPoints = 0;
+let lastChatTime = 0;
+let lastX = 100, lastY = 100;
+let userChatCache = {}; 
+const FORBIDDEN_WORDS = /hack|cheat|nazi|killall|exploit|aimbot|script/gi;
+
+const MAPS = {
+    HANGOUT: [[1,1,1,1,1,1,1,1],[1,0,0,0,0,0,0,1],[1,0,4,1,1,4,0,1],[1,0,0,0,0,0,0,1],[1,1,1,1,1,1,1,1]],
+    OBBY: [[1,1,1,1,1,1,1,1,1,1,1,1],[1,0,0,2,2,0,0,2,2,0,3,1],[1,1,1,1,1,1,1,1,1,1,1,1]],
+    SURVIVAL: [[1,1,1,1,1,1,1,1],[1,0,0,0,0,0,0,1],[1,0,1,4,4,1,0,1],[1,0,0,0,0,0,0,1],[1,1,1,1,1,1,1,1]]
+};
+
+let currentMap = MAPS.HANGOUT;
+const TILE = 64;
+let player = { x: 100, y: 100, z: 0, vZ: 0, dir: 0, hp: 100, isJumping: false };
+
+// --- AI MODERATION CORE ---
+function aiLog(msg) {
+    const consoleBox = document.getElementById('mod-console');
+    consoleBox.style.display = 'block';
+    consoleBox.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + consoleBox.innerHTML;
+    consoleBox.scrollTop = 0;
+}
+
+function runAIModeration(type, data) {
+    if(type === 'CHAT') {
+        if(FORBIDDEN_WORDS.test(data)) {
+            violationPoints += 25;
+            aiLog(`TOXIC_CONTENT: ${currentUser} flagged.`);
+        }
+        if(Date.now() - lastChatTime < 500) {
+            violationPoints += 10;
+            aiLog(`RATE_LIMIT: ${currentUser} spamming.`);
+        }
+        lastChatTime = Date.now();
+    }
+
+    if(type === 'MOVE') {
+        let dx = data.x - lastX, dy = data.y - lastY;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist > 18 && !player.isJumping) { 
+            violationPoints += 5;
+            aiLog(`VELOCITY_BREACH: ${dist.toFixed(1)}px/f`);
+        }
+        lastX = data.x; lastY = data.y;
+    }
+
+    if(violationPoints >= 50 && !isShadowBanned) {
+        isShadowBanned = true;
+        aiLog(`CRITICAL: SHADOW_BAN ON ${currentUser}. TRANSMISSION HALTED.`);
+        showGameMsg("SYNC ERROR: RECONNECTING CHAT...");
+    }
+}
+
+function reportPlayer(targetName) {
+    const ghost = ghosts[targetName];
+    const lastMsg = userChatCache[targetName] || "No recent transmission";
+    const reportData = `
+        MANUAL_REPORT: ${targetName}
+        LOC: [${ghost ? Math.floor(ghost.x) : '???'}, ${ghost ? Math.floor(ghost.y) : '???'}]
+        LAST_MSG: "${lastMsg}"
+        STATUS: Analysis queued for Human Moderator review.
+    `;
+    aiLog(reportData);
+    showGameMsg(`REPORT SENT: ${targetName}`);
+}
+
+// --- TOUCH LOGIC ---
+let touchMove = { x: 0, y: 0 }, touchLook = 0;
+if(isMobile) {
+    document.getElementById('move-stick').ontouchmove = e => {
+        let b = e.target.getBoundingClientRect();
+        let tx = e.touches[0].clientX - (b.left + 50);
+        let ty = e.touches[0].clientY - (b.top + 50);
+        touchMove = { x: tx / 50, y: ty / 50 };
+    };
+    document.getElementById('move-stick').ontouchend = () => touchMove = { x: 0, y: 0 };
+    
+    document.getElementById('look-stick').ontouchmove = e => {
+        let b = e.target.getBoundingClientRect();
+        let tx = e.touches[0].clientX - (b.left + 50);
+        player.dir += tx * 0.001;
+    };
+    document.getElementById('jump-btn').ontouchstart = () => { if(!player.isJumping) { player.vZ = 5; player.isJumping = true; }};
+    document.getElementById('fire-btn').ontouchstart = () => shoot();
+}
+
+// --- CORE AUTH ---
+function handleAuth() {
+    const u = document.getElementById('u-in').value.trim();
+    const p = document.getElementById('p-in').value;
+    if(u.length < 3) return;
+    let users = JSON.parse(localStorage.getItem('bm_v3_users') || '{}');
+    if(users[u] && users[u].pass !== p) return alert("WRONG PASSWORD");
+    if(!users[u]) users[u] = { pass: p, coins: 100, friends: [], acc: "None" };
+    
+    currentUser = u; 
+    boomcoins = users[u].coins; 
+    myFriends = users[u].friends || []; 
+    myAcc = users[u].acc || "None";
+    
+    localStorage.setItem('bm_v3_users', JSON.stringify(users));
+    document.getElementById('auth-gate').style.display = 'none';
+    document.getElementById('hub').style.display = 'block';
+    document.getElementById('sidebar').style.display = (isMobile) ? 'none' : 'block';
+    
+    refreshUI();
+    updateSocialUI();
+    initNet();
+}
+
+function refreshUI() {
+    document.getElementById('hud-coins').innerText = boomcoins;
+    document.getElementById('hud-hp').style.width = player.hp + '%';
+    document.getElementById('stats-summary').innerText = `CREDITS: ${boomcoins} | ACC: ${myAcc.toUpperCase()}`;
+}
+
+function setMode(m) {
+    selectedMode = m;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('m-' + m.toLowerCase().substring(0,4)).classList.add('active');
+}
+
+// --- GLOBAL NETWORKING ---
+function initNet() {
+    const config = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+    peer = new Peer('bm-v3-' + currentUser, { config: config });
+    
+    peer.on('open', (id) => {
+        console.log("NET_READY: " + id);
+        myFriends.forEach(f => tryConnect(f));
+    });
+    
+    peer.on('connection', setupConn);
+    
+    peer.on('error', err => {
+        if(err.type === 'peer-unavailable') console.log("Peer offline.");
+    });
+}
+
+function tryConnect(fName) {
+    if(fName === currentUser) return;
+    const conn = peer.connect('bm-v3-' + fName);
+    setupConn(conn);
+}
+
+function setupConn(conn) {
+    conn.on('open', () => {
+        if(connections.find(c => c.peer === conn.peer)) return;
+        connections.push(conn);
+        conn.send({ type: 'handshake', name: currentUser, acc: myAcc, hp: player.hp, mode: selectedMode });
+    });
+    
+    conn.on('data', data => {
+        if(data.type === 'move') ghosts[data.name] = { ...ghosts[data.name], ...data, lastSeen: Date.now() };
+        if(data.type === 'handshake') {
+            ghosts[data.name] = { x: 128, y: 128, z: 0, name: data.name, acc: data.acc, hp: data.hp, mode: data.mode, lastSeen: Date.now() };
+            addChat("SYSTEM", data.name + " LINKED");
+        }
+        if(data.type === 'chat') {
+            userChatCache[data.name] = data.msg;
+            addChat(data.name, data.msg);
+        }
+        if(data.type === 'damage' && data.target === currentUser) {
+            player.hp -= 20;
+            document.body.style.filter = "invert(0.1) sepia(1) saturate(5) hue-rotate(-50deg)";
+            setTimeout(() => document.body.style.filter = "", 100);
+            if(player.hp <= 0) respawn(); 
+            broadcastStatus();
+            refreshUI();
+        }
+        if(data.type === 'ping') {
+            conn.send({ type: 'move', x:player.x, y:player.y, z:player.z, dir:player.dir, name:currentUser, acc:myAcc, hp:player.hp, mode:selectedMode });
+        }
+    });
+
+    conn.on('close', () => {
+        connections = connections.filter(c => c.peer !== conn.peer);
+    });
+}
+
+function broadcastStatus() {
+    if(!peer || peer.disconnected) return;
+    runAIModeration('MOVE', {x: player.x, y: player.y});
+
+    connections.forEach(c => {
+        if(c.open) {
+            c.send({
+                type:'move', x:player.x, y:player.y, z:player.z, dir:player.dir, name:currentUser, acc:myAcc, hp:player.hp, mode:selectedMode
+            });
+        }
+    });
+}
+
+// --- GAMEPLAY ---
+function launchGame() {
+    currentMap = MAPS[selectedMode];
+    document.getElementById('boot').style.display = 'none';
+    document.getElementById('ui').style.display = 'block';
+    document.getElementById('minimap').style.display = 'block';
+    document.getElementById('crosshair').style.display = (selectedMode === 'SURVIVAL') ? 'block' : 'none';
+    document.getElementById('weapon-view').style.display = (selectedMode === 'SURVIVAL') ? 'block' : 'none';
+    document.getElementById('chat-area').style.display = 'block';
+    document.getElementById('hud-mode').innerText = selectedMode;
+    document.getElementById('hud-name').innerText = currentUser;
+    
+    player.hp = 100;
+    refreshUI();
+    
+    if(selectedMode === 'SURVIVAL') startTimer();
+    player.x = 100; player.y = 100; player.z = 0;
+    gameRunning = true;
+    if(!isMobile) canvas.requestPointerLock();
+    loop();
+}
+
+function startTimer() {
+    roundTime = 120;
+    document.getElementById('timer-box').style.display = 'block';
+    const interval = setInterval(() => {
+        if(!gameRunning || selectedMode !== 'SURVIVAL') { clearInterval(interval); return; }
+        roundTime--;
+        document.getElementById('timer-box').innerText = `${Math.floor(roundTime/60)}:${(roundTime%60).toString().padStart(2,'0')}`;
+        if(roundTime <= 0) { 
+            clearInterval(interval); 
+            showGameMsg("ROUND OVER!"); 
+            boomcoins += 20; 
+            saveData(); 
+            setTimeout(() => { gameRunning = false; document.getElementById('boot').style.display = 'flex'; }, 3000); 
+        }
+    }, 1000);
+}
+
+function respawn() {
+    player.hp = 100; player.x = 100; player.y = 100; player.z = 0;
+    showGameMsg("REBOOTING...");
+    refreshUI();
+}
+
+function showGameMsg(txt) {
+    const m = document.getElementById('game-msg');
+    m.innerText = txt; m.style.display = 'block';
+    setTimeout(() => m.style.display = 'none', 2000);
+}
+
+function shoot() {
+    if(selectedMode !== 'SURVIVAL' || shootTimer > 0) return;
+    shootTimer = 15;
+    
+    const flash = document.getElementById('muzzle-flash');
+    flash.style.display = 'block';
+    setTimeout(() => flash.style.display = 'none', 50);
+
+    Object.values(ghosts).forEach(g => {
+        let dx = g.x - player.x, dy = g.y - player.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        let angle = Math.atan2(dy, dx) - player.dir;
+        while(angle < -Math.PI) angle += Math.PI*2; while(angle > Math.PI) angle -= Math.PI*2;
+        
+        if(Math.abs(angle) < 0.2 && dist < 600) {
+            if(Math.abs(angle) < 0.01 && dist > 450) {
+                aiLog(`COMBAT_ANOMALY: ${currentUser} perfect aim at distance.`);
+            }
+            connections.forEach(c => c.send({type: 'damage', target: g.name}));
+        }
+    });
+}
+
+function loop() {
+    if(!gameRunning) return;
+
+    const now = Date.now();
+    Object.keys(ghosts).forEach(id => {
+        let diff = now - ghosts[id].lastSeen;
+        if(diff > 5000) {
+            delete ghosts[id]; 
+        } else if(diff > 2000) {
+            // Heartbeat Re-Sync logic
+            let conn = connections.find(c => c.peer === 'bm-v3-' + id);
+            if(conn && conn.open) conn.send({type: 'ping'});
+        }
+    });
+
+    if(!isChatting) {
+        let mv = 0, side = 0;
+        if(isMobile) {
+            mv = -touchMove.y * 3; side = touchMove.x * 2;
+        } else {
+            if(keys['KeyW']) mv = 3; if(keys['KeyS']) mv = -3;
+            if(keys['KeyA']) side = -2; if(keys['KeyD']) side = 2;
+            if(keys['Space'] && !player.isJumping) { player.vZ = 5; player.isJumping = true; }
+        }
+
+        player.z += player.vZ;
+        if(player.z > 0) player.vZ -= 0.3; else { player.z = 0; player.vZ = 0; player.isJumping = false; }
+
+        let nx = player.x + Math.cos(player.dir)*mv + Math.cos(player.dir+Math.PI/2)*side;
+        let ny = player.y + Math.sin(player.dir)*mv + Math.sin(player.dir+Math.PI/2)*side;
+        
+        let tx = Math.floor(nx/TILE), ty = Math.floor(ny/TILE);
+        let tile = (currentMap[ty] && currentMap[ty][tx]) || 0;
+        let tileH = (tile === 1) ? 1000 : (tile === 4) ? 30 : 0;
+
+        if(player.z >= tileH || tile === 0 || tile === 2 || tile === 3) {
+            player.x = nx; player.y = ny;
+            if(tile === 2) respawn();
+            if(tile === 3) { 
+                showGameMsg("OBBY CLEAR!"); 
+                boomcoins += 50; 
+                saveData(); 
+                respawn(); 
+            }
+        }
+        broadcastStatus();
+
+        if(selectedMode === 'SURVIVAL') {
+            const sway = Math.sin(Date.now() * 0.005) * (mv !== 0 || side !== 0 ? 10 : 2);
+            document.getElementById('gun-sprite').style.transform = `skewX(-10deg) translateY(${sway}px)`;
+        }
+    }
+
+    if(shootTimer > 0) shootTimer--;
+
+    const horizon = 180 + player.z;
+    ctx.fillStyle = "#010"; ctx.fillRect(0,0,640,horizon);
+    ctx.fillStyle = "#000"; ctx.fillRect(0,horizon,640,360-horizon);
+    
+    let zBuf = [];
+    for(let i=0; i<80; i++) {
+        let angle = (player.dir - 0.5) + (i/80);
+        let d = 0, hit = 0;
+        while(d < 800) { d += 4;
+            let tx = Math.floor((player.x + Math.cos(angle)*d)/TILE), ty = Math.floor((player.y + Math.sin(angle)*d)/TILE);
+            hit = (currentMap[ty] && currentMap[ty][tx]) || 0;
+            if(hit === 1 || hit === 4) break;
+        }
+        zBuf[i] = d;
+        let h = (8000 * (hit === 4 ? 0.4 : 1)) / (d * Math.cos(angle-player.dir));
+        ctx.fillStyle = `rgb(0, ${Math.max(0, 180-d/4)}, 0)`;
+        ctx.fillRect(i*8, horizon - h/2, 8, h);
+    }
+
+    Object.values(ghosts).forEach(g => {
+        let dx = g.x - player.x, dy = g.y - player.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        let angle = Math.atan2(dy, dx) - player.dir;
+        while(angle < -Math.PI) angle += Math.PI*2; while(angle > Math.PI) angle -= Math.PI*2;
+        if(Math.abs(angle) < 0.8) {
+            let sx = (angle + 0.5) * 640;
+            let h = 8000 / dist;
+            if(dist < zBuf[Math.floor(sx/8)]) {
+                let gy = horizon - h/2 - (g.z * (h/TILE));
+                ctx.fillStyle = (g.mode === 'SURVIVAL') ? "white" : "cyan";
+                ctx.fillRect(sx - h/4, gy, h/2, h);
+                
+                if(g.acc === "Wings") {
+                    ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
+                    ctx.fillRect(sx - h/2, gy + h/4, h, h/10);
+                } else if(g.acc === "Eye") {
+                    ctx.fillStyle = "red";
+                    ctx.fillRect(sx - 2, gy + 5, 4, 4);
+                }
+
+                ctx.fillStyle = "#0f0"; ctx.font = "10px Courier";
+                ctx.fillText(`${g.name} [${g.hp}%]`, sx - 20, gy - 10);
+            }
+        }
+    });
+
+    drawMinimap();
+    requestAnimationFrame(loop);
+}
+
+function drawMinimap() {
+    mCtx.fillStyle = '#000'; mCtx.fillRect(0,0,120,120);
+    const s = 120 / (currentMap.length * TILE);
+    currentMap.forEach((row, y) => row.forEach((v, x) => {
+        if(v === 1) mCtx.fillStyle = '#0f0'; else if(v === 4) mCtx.fillStyle = '#070';
+        else if(v === 2) mCtx.fillStyle = '#f00'; else if(v === 3) mCtx.fillStyle = '#ff0';
+        else return;
+        mCtx.fillRect(x*TILE*s, y*TILE*s, TILE*s, TILE*s);
+    }));
+    mCtx.fillStyle = '#fff'; mCtx.fillRect(player.x*s-2, player.y*s-2, 4, 4);
+}
+
+// --- INPUTS & AI CHAT MODERATION ---
+window.onmousedown = () => { if(gameRunning && !isChatting && !isMobile) shoot(); };
+window.onkeydown = e => {
+    keys[e.code] = true;
+    if(e.code === 'Enter' && gameRunning) {
+        const inp = document.getElementById('chat-input');
+        if(!isChatting) { isChatting = true; inp.style.display = 'block'; inp.focus(); if(!isMobile) document.exitPointerLock(); }
+        else {
+            if(inp.value) { 
+                runAIModeration('CHAT', inp.value);
+                addChat(currentUser, inp.value); 
+                if(!isShadowBanned) {
+                    connections.forEach(c => c.send({type:'chat', name:currentUser, msg:inp.value})); 
+                }
+            }
+            inp.value = ""; inp.style.display = 'none'; isChatting = false; if(!isMobile) canvas.requestPointerLock();
+        }
+    }
+};
+window.onkeyup = e => keys[e.code] = false;
+window.onmousemove = e => { if(document.pointerLockElement) player.dir += e.movementX * 0.003; };
+
+function addChat(u, m) {
+    const l = document.getElementById('chat-log');
+    l.innerHTML += `<div><b>${u}:</b> ${m}</div>`;
+    l.scrollTop = l.scrollHeight;
+    userChatCache[u] = m;
+}
+
+function setAcc(a) { 
+    myAcc = a; 
+    saveData(); 
+    refreshUI();
+    broadcastStatus(); 
+}
+
+function addFriend() {
+    const n = document.getElementById('f-search').value.trim();
+    if(n && !myFriends.includes(n)) { 
+        myFriends.push(n); 
+        saveData(); 
+        updateSocialUI(); 
+        tryConnect(n); 
+    }
+}
+
+function updateSocialUI() {
+    document.getElementById('friend-list').innerHTML = myFriends.map(f => `
+        <div class="item">
+            ${f} <span id="stat-${f}" style="color:var(--cyan)">ONLINE</span><br>
+            <button class="rep-btn" onclick="reportPlayer('${f}')">REPORT</button>
+        </div>`).join('');
+}
+
+function saveData() {
+    let users = JSON.parse(localStorage.getItem('bm_v3_users'));
+    if(!users[currentUser]) users[currentUser] = {};
+    users[currentUser].coins = boomcoins; 
+    users[currentUser].friends = myFriends; 
+    users[currentUser].acc = myAcc;
+    localStorage.setItem('bm_v3_users', JSON.stringify(users));
+}
+
+function claimDaily() { 
+    boomcoins += 100; 
+    saveData(); 
+    refreshUI();
+    alert("100 CREDITS TRANSFERRED.");
+}
+</script>
+</body>
+</html>
