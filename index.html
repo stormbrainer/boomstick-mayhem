@@ -84,6 +84,10 @@
             <button onclick="launchGame()" style="background: var(--neon); color: #000;">INITIALIZE</button>
             <button onclick="claimDaily()" style="color: var(--gold);">DAILY REWARD</button>
             <hr style="border-color: var(--neon); margin: 15px 0;">
+            
+            <input type="file" id="char-upload" accept="image/*" style="display:none;" onchange="uploadCharacter(event)">
+            <button onclick="document.getElementById('char-upload').click()" style="color: var(--cyan); border-color: var(--cyan);">UPLOAD AVATAR</button>
+            
             <input type="text" id="f-search" placeholder="ADD FRIEND ID">
             <button onclick="addFriend()" style="color: var(--cyan);">ADD SQUAD</button>
         </div>
@@ -151,6 +155,23 @@ let peer = null, connections = [], ghosts = {};
 let gameRunning = false, isChatting = false, selectedMode = 'HANGOUT';
 let shootTimer = 0, roundTime = 120;
 const keys = {};
+
+// --- AVATAR SYSTEM ---
+let myCustomAvatar = null;
+const avatarImg = new Image();
+
+function uploadCharacter(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        myCustomAvatar = e.target.result;
+        avatarImg.src = myCustomAvatar;
+        saveData();
+        showGameMsg("AVATAR SYNCED");
+    };
+    reader.readAsDataURL(file);
+}
 
 // --- AI MODERATION STATE ---
 let isShadowBanned = false;
@@ -248,12 +269,14 @@ function handleAuth() {
     if(u.length < 3) return;
     let users = JSON.parse(localStorage.getItem('bm_v3_users') || '{}');
     if(users[u] && users[u].pass !== p) return alert("WRONG PASSWORD");
-    if(!users[u]) users[u] = { pass: p, coins: 100, friends: [], acc: "None" };
+    if(!users[u]) users[u] = { pass: p, coins: 100, friends: [], acc: "None", avatar: null };
     
     currentUser = u; 
     boomcoins = users[u].coins; 
     myFriends = users[u].friends || []; 
     myAcc = users[u].acc || "None";
+    myCustomAvatar = users[u].avatar || null;
+    if(myCustomAvatar) avatarImg.src = myCustomAvatar;
     
     localStorage.setItem('bm_v3_users', JSON.stringify(users));
     document.getElementById('auth-gate').style.display = 'none';
@@ -304,13 +327,25 @@ function setupConn(conn) {
     conn.on('open', () => {
         if(connections.find(c => c.peer === conn.peer)) return;
         connections.push(conn);
-        conn.send({ type: 'handshake', name: currentUser, acc: myAcc, hp: player.hp, mode: selectedMode });
+        conn.send({ type: 'handshake', name: currentUser, acc: myAcc, hp: player.hp, mode: selectedMode, avatar: myCustomAvatar });
     });
     
     conn.on('data', data => {
-        if(data.type === 'move') ghosts[data.name] = { ...ghosts[data.name], ...data, lastSeen: Date.now() };
+        if(data.type === 'move') {
+            ghosts[data.name] = { ...ghosts[data.name], ...data, lastSeen: Date.now() };
+            if(data.avatar) {
+                if(!ghosts[data.name].sprite) {
+                    ghosts[data.name].sprite = new Image();
+                    ghosts[data.name].sprite.src = data.avatar;
+                }
+            }
+        }
         if(data.type === 'handshake') {
-            ghosts[data.name] = { x: 128, y: 128, z: 0, name: data.name, acc: data.acc, hp: data.hp, mode: data.mode, lastSeen: Date.now() };
+            ghosts[data.name] = { x: 128, y: 128, z: 0, name: data.name, acc: data.acc, hp: data.hp, mode: data.mode, lastSeen: Date.now(), avatar: data.avatar };
+            if(data.avatar) {
+                ghosts[data.name].sprite = new Image();
+                ghosts[data.name].sprite.src = data.avatar;
+            }
             addChat("SYSTEM", data.name + " LINKED");
         }
         if(data.type === 'chat') {
@@ -326,7 +361,7 @@ function setupConn(conn) {
             refreshUI();
         }
         if(data.type === 'ping') {
-            conn.send({ type: 'move', x:player.x, y:player.y, z:player.z, dir:player.dir, name:currentUser, acc:myAcc, hp:player.hp, mode:selectedMode });
+            conn.send({ type: 'move', x:player.x, y:player.y, z:player.z, dir:player.dir, name:currentUser, acc:myAcc, hp:player.hp, mode:selectedMode, avatar: myCustomAvatar });
         }
     });
 
@@ -342,7 +377,7 @@ function broadcastStatus() {
     connections.forEach(c => {
         if(c.open) {
             c.send({
-                type:'move', x:player.x, y:player.y, z:player.z, dir:player.dir, name:currentUser, acc:myAcc, hp:player.hp, mode:selectedMode
+                type:'move', x:player.x, y:player.y, z:player.z, dir:player.dir, name:currentUser, acc:myAcc, hp:player.hp, mode:selectedMode, avatar: myCustomAvatar
             });
         }
     });
@@ -431,7 +466,6 @@ function loop() {
         if(diff > 5000) {
             delete ghosts[id]; 
         } else if(diff > 2000) {
-            // Heartbeat Re-Sync logic
             let conn = connections.find(c => c.peer === 'bm-v3-' + id);
             if(conn && conn.open) conn.send({type: 'ping'});
         }
@@ -506,8 +540,14 @@ function loop() {
             let h = 8000 / dist;
             if(dist < zBuf[Math.floor(sx/8)]) {
                 let gy = horizon - h/2 - (g.z * (h/TILE));
-                ctx.fillStyle = (g.mode === 'SURVIVAL') ? "white" : "cyan";
-                ctx.fillRect(sx - h/4, gy, h/2, h);
+                
+                // RENDER CUSTOM SPRITE IF EXISTS
+                if(g.sprite && g.sprite.complete) {
+                    ctx.drawImage(g.sprite, sx - h/4, gy, h/2, h);
+                } else {
+                    ctx.fillStyle = (g.mode === 'SURVIVAL') ? "white" : "cyan";
+                    ctx.fillRect(sx - h/4, gy, h/2, h);
+                }
                 
                 if(g.acc === "Wings") {
                     ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
@@ -599,6 +639,7 @@ function saveData() {
     users[currentUser].coins = boomcoins; 
     users[currentUser].friends = myFriends; 
     users[currentUser].acc = myAcc;
+    users[currentUser].avatar = myCustomAvatar;
     localStorage.setItem('bm_v3_users', JSON.stringify(users));
 }
 
