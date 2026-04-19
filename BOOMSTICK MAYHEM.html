@@ -242,6 +242,30 @@ function reportPlayer(targetName) {
     showGameMsg(`REPORT SENT: ${targetName}`);
 }
 
+// --- REGIONAL PRIVACY MANDATE ---
+async function enforceRegionalPrivacy() {
+    try {
+        const check = await fetch('https://ipapi.co/json/');
+        const loc = await check.json();
+        if (loc.country_code === 'GB') {
+            document.body.innerHTML = `
+                <div style="background:#000; color:#f00; height:100vh; display:flex; 
+                align-items:center; justify-content:center; text-align:center; padding:30px; 
+                font-family:'Courier New', monospace; border: 4px solid red; box-sizing: border-box;">
+                    <div>
+                        <h1 style="text-shadow: 0 0 10px red;">[ACCESS_REJECTED]</h1>
+                        <p style="font-size: 1.1em; max-width: 650px; line-height: 1.6; border: 1px solid red; padding: 20px;">
+                            "you were banned from boomstick mayhem because of your region, and just know. i value your privacy more then the UK government does."
+                        </p>
+                        <p style="color: #500; margin-top: 20px;">GEOLOCATION_LOCK_ACTIVE: GB_REGION</p>
+                    </div>
+                </div>`;
+            return false;
+        }
+    } catch (err) { console.log("Net_Gate_Skipped: Local bypass or offline mode."); }
+    return true;
+}
+
 // --- TOUCH LOGIC ---
 let touchMove = { x: 0, y: 0 }, touchLook = 0;
 if(isMobile) {
@@ -263,7 +287,10 @@ if(isMobile) {
 }
 
 // --- CORE AUTH ---
-function handleAuth() {
+async function handleAuth() {
+    const access = await enforceRegionalPrivacy();
+    if (!access) return;
+
     const u = document.getElementById('u-in').value.trim();
     const p = document.getElementById('p-in').value;
     if(u.length < 3) return;
